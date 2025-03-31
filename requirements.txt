@@ -1,0 +1,9 @@
+torch
+numpy
+ipykernel
+pyyaml
+tqdm
+tgt
+tensorboard
+matplotlib
+scipy

@@ -1,0 +1,8 @@
+dataset: "GLOBE"
+
+path:
+  # corpus_path: "data/LJSpeech-1.1"
+  # lexicon_path: "lexicon/librispeech-lexicon.txt"
+  # raw_path: "./raw_data/LJSpeech"
+  preprocessed_path: "/data/nzxyin/GLOBE/preprocess_default"
+  splits_path: "/data/nzxyin/GLOBE/preprocess_default/splits/american_english_splits"

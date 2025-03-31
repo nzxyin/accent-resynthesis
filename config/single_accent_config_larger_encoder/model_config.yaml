@@ -1,0 +1,18 @@
+# model params
+sparc_dim: 15
+model_dim: 256
+dropout: 0.2
+
+# model encoder params
+encoder_n_layers: 6
+encoder_ff_dim: 1024
+encoder_kernel_size: 9
+encoder_ff_kernel_size: 1
+encoder_n_heads: 4
+
+# model decoder params
+decoder_n_layers: 6
+decoder_ff_dim: 1024
+decoder_kernel_size: 9
+decoder_ff_kernel_size: 1
+decoder_n_heads: 4
