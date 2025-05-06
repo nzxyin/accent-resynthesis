@@ -5,6 +5,7 @@ import torch.nn.functional as F
 
 
 def get_mask_from_lengths(lengths, max_len=None):
+    # mask = 1 where idx > len
     batch_size = lengths.shape[0]
     if max_len is None:
         max_len = torch.max(lengths).item()

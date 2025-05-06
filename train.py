@@ -11,8 +11,8 @@ from tqdm import tqdm
 import logging
 
 from train_util import get_model, get_param_num, log, to_device
-from loss import AccentReconstructionLoss
-from dataset import SingleAccentDataset
+from fastaccent.loss import FastAccentLoss
+from dataset import MultiAccentDataset
 
 from evaluate import evaluate
 
@@ -24,7 +24,7 @@ def main(args, configs):
     preprocess_config, _, train_config = configs
 
     # Get dataset
-    dataset = SingleAccentDataset(
+    dataset = MultiAccentDataset(
         "train.json", preprocess_config, train_config, sort=True, drop_last=True
     )
     batch_size = train_config["optimizer"]["batch_size"]
@@ -41,7 +41,7 @@ def main(args, configs):
     model, optimizer = get_model(args, configs, device, train=True)
     model = nn.DataParallel(model)
     num_param = get_param_num(model)
-    Loss = AccentReconstructionLoss().to(device)
+    Loss = FastAccentLoss().to(device)
     print("Number of Model Parameters:", num_param)
 
     # Init logger
@@ -79,7 +79,7 @@ def main(args, configs):
                 output = model(*(batch[1:7]))
 
                 # Cal Loss
-                loss = Loss(output, batch[7])
+                loss, meta = Loss(output, batch[5])
 
                 # Backward
                 total_loss = loss / grad_acc_step
@@ -95,14 +95,14 @@ def main(args, configs):
                 if step % log_step == 0:
                     loss = loss.item()
                     message1 = "Step {}/{}, ".format(step, total_step)
-                    message2 = f"Reconstruction Loss: {loss:.4f}"
+                    message2 = f"Total Loss: {loss:.4f}"
 
                     with open(os.path.join(train_log_path, "log.txt"), "a") as f:
                         f.write(message1 + message2 + "\n")
 
                     outer_bar.write(message1 + message2)
 
-                    log(train_logger, step, loss)
+                    log(train_logger, step, meta)
 
                 if step % val_step == 0:
                     model.eval()

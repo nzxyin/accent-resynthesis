@@ -2,7 +2,7 @@ from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .layers import PointwiseConv, DepthwiseConv1d, SepConv1d
+from ..layers import PointwiseConv, DepthwiseConv1d, SepConv1d
 from .attention import RelativeMultiHeadAttention
 
 class MultiHeadSelfAttentionModule(nn.Module):
@@ -42,7 +42,7 @@ class DepthwiseConvModule(nn.Module):
         x = self.layer_norm(x).transpose(1,2)
         x = F.glu(self.pointwise_conv_1(x), dim=1)
 
-        x = F.gelu(self.batch_norm(self.depthwise_conv(x)))
+        x = F.silu(self.batch_norm(self.depthwise_conv(x)))
         x = self.dropout(self.pointwise_conv_2(x))
         return x.transpose(1,2)
     
@@ -60,7 +60,7 @@ class ConvFeedForwardModule(nn.Module):
         x : (B, L, d_model)
         """
         x = self.layer_norm(x).transpose(1,2)
-        x = self.dropout(F.gelu((self.conv_1(x))))
+        x = self.dropout(F.silu((self.conv_1(x))))
         x = self.dropout(self.conv_2(x))
         return x.transpose(1,2)
     

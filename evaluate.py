@@ -6,9 +6,9 @@ import yaml
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from train_util import log, get_model, to_device
-from loss import AccentReconstructionLoss
-from dataset import SingleAccentDataset
+from train_util import eval_log, get_model, to_device
+from fastaccent.loss import FastAccentLoss
+from dataset import MultiAccentDataset
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -18,8 +18,8 @@ def evaluate(model, step, configs, logger=None):
     preprocess_config, _, train_config = configs
 
     # Get dataset
-    dataset = SingleAccentDataset(
-        "val.json", preprocess_config, train_config, sort=False, drop_last=False
+    dataset = MultiAccentDataset(
+        "val.json", preprocess_config, train_config, sort=True, drop_last=False
     )
     batch_size = train_config["optimizer"]["batch_size"]
     loader = DataLoader(
@@ -30,7 +30,7 @@ def evaluate(model, step, configs, logger=None):
     )
 
     # Get loss function
-    Loss = AccentReconstructionLoss().to(device)
+    Loss = FastAccentLoss().to(device)
 
     # Evaluation
     loss_sum = 0
@@ -42,15 +42,15 @@ def evaluate(model, step, configs, logger=None):
                 output = model(*(batch[1:7]))
 
                 # Cal Loss
-                loss = Loss(output, batch[7])
+                loss, _ = Loss(output, batch[5])
                 loss_sum += loss.item() * len(batch[0])
 
     loss_mean = loss_sum / len(dataset)
 
-    message = f"Validation Step {step}, Reconstruction Loss: {loss_mean:.4f}"
+    message = f"Validation Step {step}, Total Loss: {loss_mean:.4f}"
 
     if logger is not None:
-        log(logger, step, loss_mean)
+        eval_log(logger, step, loss_mean)
 
     return message
 
