@@ -1,0 +1,27 @@
+# model params
+num_accents: 2
+sparc_dim: 15
+model_dim: 512
+dropout: 0.2
+
+# model encoder params
+encoder_n_layers: 6
+encoder_ff_dim: 2048
+encoder_kernel_size: 9
+encoder_ff_kernel_size: 3 
+encoder_n_heads: 4
+
+# aligner params
+n_aligner_channels: 128
+
+# duration predictor params
+predictor_filter_size: 256
+predictor_kernel_size: 3
+predictor_dropout: 0.5
+
+# model decoder params
+decoder_n_layers: 6
+decoder_ff_dim: 2048
+decoder_kernel_size: 9
+decoder_ff_kernel_size: 3
+decoder_n_heads: 4 
