@@ -1,4 +1,8 @@
-torch
+torch==2.7.0
+torchaudio==2.7.0
+torchcrepe
+transformers
+huggingface-hub
 numpy
 ipykernel
 pyyaml
@@ -7,3 +11,5 @@ tgt
 tensorboard
 matplotlib
 scipy
+soundfile
+librosa

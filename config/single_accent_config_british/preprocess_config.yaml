@@ -4,5 +4,5 @@ path:
   # corpus_path: "data/LJSpeech-1.1"
   # lexicon_path: "lexicon/librispeech-lexicon.txt"
   # raw_path: "./raw_data/LJSpeech"
-  preprocessed_path: "/data/nzxyin/GLOBE/preprocess_default"
-  splits_path: "/data/nzxyin/GLOBE/preprocess_default/splits/british_english_splits"
+  preprocessed_path: "/data/nzxyin/GLOBE/preprocess_unilex"
+  splits_path: "/data/nzxyin/GLOBE/preprocess_unilex/splits/british_english_splits"

@@ -1,12 +1,13 @@
 import argparse
 import os
+import io
 
 import torch
 import yaml
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from train_util import eval_log, get_model, to_device
+from train_util import eval_log, get_model, to_device, plot_alignment_to_numpy
 from fastaccent.loss import FastAccentLoss
 from dataset import MultiAccentDataset
 
@@ -32,6 +33,8 @@ def evaluate(model, step, configs, logger=None):
     # Get loss function
     Loss = FastAccentLoss().to(device)
 
+    visulation_sample = None
+
     # Evaluation
     loss_sum = 0
     for batchs in loader:
@@ -39,7 +42,10 @@ def evaluate(model, step, configs, logger=None):
             batch = to_device(batch, device)
             with torch.no_grad():
                 # Forward
-                output = model(*(batch[1:7]))
+                output = model(*(batch[1:]))
+
+                if visulation_sample is None:
+                    visulation_sample = output[-1][0][0]
 
                 # Cal Loss
                 loss, _ = Loss(output, batch[5])
@@ -50,6 +56,8 @@ def evaluate(model, step, configs, logger=None):
     message = f"Validation Step {step}, Total Loss: {loss_mean:.4f}"
 
     if logger is not None:
+        alignment_image = plot_alignment_to_numpy(visulation_sample)
+        logger.add_image("Alignment/Example", alignment_image, step, dataformats='HWC')
         eval_log(logger, step, loss_mean)
 
     return message

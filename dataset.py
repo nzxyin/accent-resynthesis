@@ -66,13 +66,15 @@ class MultiAccentDataset(Dataset):
         self.drop_last = drop_last
 
     def __len__(self):
-        return len(self.basename)
+        return len(self.name_accent)
 
     def __getitem__(self, idx):
         basename, accent = self.name_accent[idx]
         phone = np.load(os.path.join(self.preprocessed_path, "text_ids", f"{basename}.npy"))
         sparc = np.load(os.path.join(self.preprocessed_path, "sparc", f"{basename}.npy"))
-        duration = np.load(os.path.join(self.preprocessed_path, "duration", f"{basename}.npy"))
+        duration = np.load(os.path.join(self.preprocessed_path, "durations", f"{basename}.npy"))
+        assert sparc.shape[1] == 15
+        assert duration.shape == (phone.shape[0], sparc.shape[0])
 
         sample = {
             "id": basename,
@@ -85,7 +87,13 @@ class MultiAccentDataset(Dataset):
 
     def process_meta(self, filename):
         with open(os.path.join(self.splits_path, filename), "r") as f:
-            name_accent = [(name, accent) for name, accent in json.load(f).items()]
+            data = json.load(f)
+            if isinstance(data, list):
+                name_accent = [(name, 0) for name in data]
+            elif isinstance(data, dict):
+                name_accent = [(name, accent) for name, accent in data.items()]
+            else:
+                raise TypeError(f"invalid type for {filename}, {type(data)}")
         return name_accent
 
     def reprocess(self, data, idxs):
@@ -103,7 +111,7 @@ class MultiAccentDataset(Dataset):
         
         durs_padded = np.zeros((len(idxs), max(sparc_lens), max(text_lens)))
         for i, dur in enumerate(durations):
-            durs_padded[i, :dur.shape[0], :dur.shape[1]] = dur
+            durs_padded[i, :dur.shape[1], :dur.shape[0]] = dur.T
 
         assert texts.shape[1] == max(text_lens)
         assert sparcs.shape[1] == max(sparc_lens)
@@ -115,9 +123,9 @@ class MultiAccentDataset(Dataset):
             text_lens,
             max(text_lens),
             durs_padded,
+            sparcs,
             sparc_lens,
             max(sparc_lens),
-            sparcs,
             accents,
         )
 

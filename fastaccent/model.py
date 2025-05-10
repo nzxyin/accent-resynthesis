@@ -2,13 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from util import get_mask_from_lengths, pad
-from conformer import Conformer
-from layers import SepConv1d
+from util import get_mask_from_lengths
+from .conformer import Conformer
+from .layers import SepConv1d, ConvNorm
 from symbols import symbols
 
 def regulate_len(durations, enc_out, pace=1.0, max_dec_len=None):
     """If target=None, then predicted durations are applied"""
+
     dtype = enc_out.dtype
     reps = durations.float() / pace
     reps = (reps + 0.5).long()
@@ -26,14 +27,19 @@ def regulate_len(durations, enc_out, pace=1.0, max_dec_len=None):
     enc_rep = torch.matmul(mult, enc_out)
 
     if max_dec_len is not None:
-        enc_rep = enc_rep[:, :max_dec_len]
-        dec_lens = torch.clip(dec_lens, max_dec_len)
+        if max_dec_len < enc_rep.shape[1]:
+            enc_rep = enc_rep[:, :max_dec_len]
+            dec_lens = torch.clip(dec_lens, max=max_dec_len)
+        else:
+            enc_rep = F.pad(enc_rep, (0,0,0,max_dec_len - enc_rep.shape[1]), value=0.0)
+            assert enc_rep.shape[1] == max_dec_len, f"{max_dec_len}, {enc_rep.shape}"
+        
     return enc_rep, dec_lens
 
 def mas_width1(log_attn_map):
     """mas with hardcoded width=1"""
     # assumes mel x text
-    neg_inf = log_attn_map.dtype.type(-np.inf)
+    neg_inf = log_attn_map.dtype.type(-1e8)
     log_p = log_attn_map.copy()
     log_p[0, 1:] = neg_inf
     for i in range(1, log_p.shape[0]):
@@ -57,33 +63,33 @@ def mas_width1(log_attn_map):
     opt[0, j] = one
     return opt
 
-class ConvAttention(torch.nn.Module):
-    def __init__(self, n_sparc_channels=15, n_text_channels=256, n_att_channels=64):
+class ConvAttention(nn.Module):
+    def __init__(self, n_sparc_channels=12, n_text_channels=256, n_att_channels=64):
         super(ConvAttention, self).__init__()
-        self.softmax = torch.nn.Softmax(dim=-1)
-        self.log_softmax = torch.nn.LogSoftmax(dim=-1)
+        self.softmax = nn.Softmax(dim=-1)
+        self.log_softmax = nn.LogSoftmax(dim=-1)
         self.key_proj = nn.Sequential(
-            SepConv1d(n_text_channels,
+            ConvNorm(n_text_channels,
                      n_text_channels * 2,
                      kernel_size=3,
                      padding=1),
-            torch.nn.SiLU(),
-            SepConv1d(n_text_channels * 2,
+            nn.SiLU(),
+            ConvNorm(n_text_channels * 2,
                      n_att_channels,
                      kernel_size=1,)
         )
 
         self.query_proj = nn.Sequential(
-            SepConv1d(n_sparc_channels,
+            ConvNorm(n_sparc_channels,
                         n_sparc_channels * 2,
                         kernel_size=3,
                         padding=1),
-            torch.nn.SiLU(),
-            SepConv1d(n_sparc_channels * 2,
-                        n_sparc_channels,
+            nn.SiLU(),
+            ConvNorm(n_sparc_channels * 2,
+                        n_sparc_channels * 2,
                         kernel_size=1,),
-            torch.nn.SiLU(),
-            SepConv1d(n_sparc_channels,
+            nn.SiLU(),
+            ConvNorm(n_sparc_channels * 2,
                         n_att_channels,
                         kernel_size=1,)
         )
@@ -102,10 +108,10 @@ class ConvAttention(torch.nn.Module):
             attn (torch.tensor): B x 1 x T1 x T2 attention mask.
                 Final dim T2 should sum to 1
         """
-        keys_enc = self.key_proj(keys).permute(0,2,1)  # B x n_attn_dims x T2
+        keys_enc = self.key_proj(keys).transpose(1,2)  # B x n_attn_dims x T2
 
         # Beware can only do this since query_dim = attn_dim = n_mel_channels
-        queries_enc = self.query_proj(queries).permute(0,2,1)
+        queries_enc = self.query_proj(queries).transpose(1,2)
 
         # different ways of computing attn,
         # one is isotopic gaussians (per phoneme)
@@ -121,7 +127,7 @@ class ConvAttention(torch.nn.Module):
         attn_logprob = attn.clone()
 
         if mask is not None:
-            attn.data.masked_fill_(mask.unsqueeze(2), -float("inf"))
+            attn.data.masked_fill_(mask[:, None, None, :], -1e8)
 
         attn = self.softmax(attn)  # Softmax along T2
         return attn, attn_logprob
@@ -131,32 +137,37 @@ class TemporalPredictor(nn.Module):
     def __init__(self, input_size, filter_size, kernel_size, dropout):
         super(TemporalPredictor, self).__init__()
 
-        self.layers = nn.Sequential(
-            SepConv1d(input_size, filter_size, kernel_size, stride=1, padding=kernel_size//2),
-            nn.SiLU(),
-            nn.LayerNorm(self.filter_size),
-            nn.Dropout(p=dropout),
-            SepConv1d(filter_size, filter_size, kernel_size, stride=1, padding=kernel_size//2),
-            nn.SiLU(),
-            nn.LayerNorm(self.filter_size),
-            nn.Dropout(p=dropout),
-        )
+        self.conv_1 = SepConv1d(input_size, filter_size, kernel_size, stride=1, padding=kernel_size//2)
+        self.norm_1 = nn.LayerNorm(filter_size)
+        self.conv_2 = SepConv1d(filter_size, filter_size, kernel_size, stride=1, padding=kernel_size//2)
+        self.norm_2 = nn.LayerNorm(filter_size)
+
         self.fc = nn.Linear(filter_size, 1)
+        self.dropout = nn.Dropout(dropout)
+
 
     def forward(self, input, mask):
-        out = input.masked_fill(mask, 0.)
-        out = self.layers(out)
-        out = self.fc(out).masked_fill(mask, 0.)
+        """
+        input: torch.tensor (B, L, d_model)
+        mask: torch.tensor uint8 (B, L)
+        ---
+        output: torch.tensor (B, L)
+        """
+        out = input.masked_fill(mask.unsqueeze(-1), 0.)
+        out = self.dropout(self.norm_1(F.silu(self.conv_1(out.transpose(1,2)).transpose(1,2))))
+        out = self.dropout(self.norm_2(F.silu(self.conv_2(out.transpose(1,2)).transpose(1,2))))
+        out = self.fc(out).masked_fill(mask.unsqueeze(-1), 0.)
         return out.squeeze(-1)
 
 class FastAccentTTS(nn.Module):
     def __init__(self, num_accents=2, sparc_dim=15, model_dim=256, encoder_n_layers=4, encoder_ff_dim=1024, encoder_kernel_size=9, encoder_ff_kernel_size=3, encoder_n_heads=2, 
-                 n_aligner_channels=64,
-                 predictor_filter_size=256, predictor_kernel_size=3, predictor_dropout=0.5,
+                 n_aligner_channels=64, predictor_filter_size=256, predictor_kernel_size=3, predictor_dropout=0.5,
                  decoder_n_layers=6, decoder_ff_dim=1024, decoder_kernel_size=9, decoder_ff_kernel_size=3, decoder_n_heads=2, dropout=0.2):
         super(FastAccentTTS, self).__init__()
 
-        self.phone_embedding = nn.Embedding(len(symbols), model_dim)
+        self.model_dim = model_dim
+
+        self.phone_embedding = nn.Embedding(len(symbols), model_dim, padding_idx=0)
 
         self.accent_embedding = nn.Embedding(num_accents, model_dim)
 
@@ -165,7 +176,7 @@ class FastAccentTTS(nn.Module):
 
         self.sparc_decoder = Conformer(decoder_n_layers, model_dim, decoder_ff_dim, decoder_kernel_size, decoder_ff_kernel_size, decoder_n_heads, dropout)
 
-        self.attention = ConvAttention(n_text_channels=model_dim, n_sparc_channels=sparc_dim, n_att_channels=n_aligner_channels)
+        self.attention = ConvAttention(n_text_channels=model_dim, n_sparc_channels=sparc_dim-3, n_att_channels=n_aligner_channels)
 
         self.duration_predictor = TemporalPredictor(model_dim, predictor_filter_size, predictor_kernel_size, predictor_dropout)
 
@@ -195,22 +206,33 @@ class FastAccentTTS(nn.Module):
 
     def forward(self, phones, phone_lens, max_phone_len, attn_prior, sparc, target_lens, max_target_len, accent_label):
         # phones -> masked -> embeddings
+        if torch.isnan(phones).any() or torch.isinf(phones).any():
+            raise TypeError("NaN or Inf in input data detected!")
+        if torch.isnan(attn_prior).any() or torch.isinf(attn_prior).any():
+            raise TypeError("NaN or Inf in input data detected!")
+        if torch.isnan(sparc).any() or torch.isinf(sparc).any():
+            raise TypeError("NaN or Inf in input data detected!")
+
         enc_mask = get_mask_from_lengths(phone_lens, max_phone_len)
         
         embs = self.phone_embedding(phones)
 
         accent_emb = self.accent_embedding(accent_label)
-
-        embs += accent_emb
         # embeddings -> encoded_embs
-        enc_out = self.phone_encoder(embs, key_padding_mask=enc_mask)
+        assert embs.shape == (phones.shape[0], max_phone_len, self.model_dim)
+
+        enc_out = self.phone_encoder(embs + accent_emb[:, None, :], key_padding_mask=enc_mask)
         # regulate_lengths(encoded_embs, durations) -> expanded_embs
         # expanded_embs -> decoded_embs
         log_dur_pred = self.duration_predictor(enc_out, enc_mask)
+        assert log_dur_pred.shape == (phones.shape[0], max_phone_len)
         # dur_pred = torch.clip(torch.exp(log_dur_pred) - 1, 0)
 
         attn_soft, attn_logprob = self.attention(
-            sparc, embs.permute(0, 2, 1), enc_mask, attn_prior=attn_prior)
+            sparc[...,:12].float(), enc_out.float(), enc_mask, attn_prior=attn_prior)
+        
+        # attn_soft, attn_logprob = self.attention(
+        #     sparc[...,:12].float(), embs.float(), enc_mask, attn_prior=attn_prior)
         
         attn_hard = self._binarize_attention(attn_soft, phone_lens, target_lens)
 
@@ -219,18 +241,20 @@ class FastAccentTTS(nn.Module):
         dur_tgt = attn_hard_dur
         assert torch.all(torch.eq(dur_tgt.sum(dim=1), target_lens))
 
-        expanded_embs, _ = regulate_len(enc_out, dur_tgt, max_dec_len=max_target_len)
-        sparc_masks = get_mask_from_lengths(target_lens, max_target_len)
+        expanded_embs, dec_lens = regulate_len(dur_tgt, enc_out, max_dec_len=max_target_len)
+        sparc_masks = get_mask_from_lengths(dec_lens, max_target_len)
         decoded_embs = self.sparc_decoder(expanded_embs, key_padding_mask=sparc_masks)
         # decoded_embs -> pred_sparc
         pred_sparc = self.sparc_proj(decoded_embs)
+
+
         return (
             log_dur_pred,
             dur_tgt,
             phone_lens,
             enc_mask,
             pred_sparc, 
-            target_lens,
+            dec_lens,
             sparc_masks,
             attn_soft,
             attn_hard,

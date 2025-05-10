@@ -2,4 +2,4 @@ dataset: "GLOBE"
 
 path:
   preprocessed_path: "/data/nzxyin/GLOBE/preprocess_unilex"
-  splits_path: "/data/nzxyin/GLOBE/preprocess_unilex/splits/"
+  splits_path: "/data/nzxyin/GLOBE/preprocess_unilex/splits/2_accent_splits"

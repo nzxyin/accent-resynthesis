@@ -1,7 +1,7 @@
 path:
-  ckpt_path: "/data/nzxyin/accented_resynthesis/GLOBE_single_spkr/output/ckpt/{}"
-  log_path: "/data/nzxyin/accented_resynthesis/GLOBE_single_spkr/output/log/{}"
-  result_path: "/data/nzxyin/accented_resynthesis/GLOBE_single_spkr/output/result/{}"
+  ckpt_path: "/data/nzxyin/accented_resynthesis/GLOBE_1_accent/output/ckpt/{}"
+  log_path: "/data/nzxyin/accented_resynthesis/GLOBE_1_accent/output/log/{}"
+  result_path: "/data/nzxyin/accented_resynthesis/GLOBE_1_accent/output/result/{}"
 optimizer:
   batch_size: 64
   betas: [0.9, 0.98]

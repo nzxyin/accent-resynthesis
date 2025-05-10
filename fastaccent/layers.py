@@ -54,3 +54,19 @@ class SepConv1d(nn.Module):
         x = self.pointwise(x)
         return x
     
+class ConvNorm(nn.Module):
+    def __init__(
+            self, 
+            in_channels: int, 
+            out_channels: int, 
+            kernel_size: Union[int, Tuple[int]], 
+            stride: Union[int, Tuple[int]] = 1, 
+            padding: Union[str, Union[int, Tuple[int]]] = 0
+        ):
+        super(ConvNorm, self).__init__()
+        self.conv = SepConv1d(in_channels, out_channels, kernel_size, stride, padding)
+        self.norm = nn.LayerNorm(out_channels)
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # return self.norm(self.conv(x.transpose(1,2)).transpose(1,2))
+        return self.conv(x.transpose(1,2)).transpose(1,2)

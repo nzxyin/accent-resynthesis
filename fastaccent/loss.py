@@ -71,7 +71,7 @@ class AttentionCTCLoss(torch.nn.Module):
             dtype=torch.long)
         attn_logprob.masked_fill_(
             key_inds.view(1,1,-1) > key_lens.view(1,-1,1), # key_inds >= key_lens+1
-            -float("inf"))
+            -1e8)
         attn_logprob = self.log_softmax(attn_logprob)
 
         # Target sequences
@@ -113,6 +113,8 @@ class FastAccentLoss(nn.Module):
             attn_hard,
             attn_logprob,
         ) = prediction
+
+
         target_sparcs = target_sparcs
 
         sparc_masks = ~sparc_masks
@@ -120,8 +122,8 @@ class FastAccentLoss(nn.Module):
         pred_sparc = pred_sparc.masked_select(sparc_masks.unsqueeze(-1))
         target_sparcs = target_sparcs.masked_select(sparc_masks.unsqueeze(-1))
 
-        log_dur_tgt = torch.log(dur_tgt.float() + 1).masked_select(~enc_mask.unsqueeze(-1))
-        log_dur_pred = log_dur_pred.masked_select(~enc_mask.unsqueeze(-1))
+        log_dur_tgt = torch.log(dur_tgt.float() + 1).masked_select(~enc_mask)
+        log_dur_pred = log_dur_pred.masked_select(~enc_mask)
 
         dur_loss = self.mse_loss(log_dur_tgt, log_dur_pred)
 

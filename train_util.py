@@ -3,21 +3,24 @@ from optimizer import ScheduledOptim
 
 import os
 import json
+import io
+import matplotlib.pyplot as plt
+from PIL import Image
 
 import torch
 import numpy as np
 
 def to_device(data, device):
-    assert len(data) == 8, "incorrect data format"
+    assert len(data) == 9, "incorrect data format"
     (
         ids,
         texts,
         text_lens,
         max_text_len,
         durs_padded,
+        sparcs,
         sparc_lens,
         max_sparc_len,
-        sparcs,
         accents,
     ) = data
     texts = torch.from_numpy(texts).long().to(device)
@@ -32,9 +35,9 @@ def to_device(data, device):
         text_lens,
         max_text_len,
         durs_padded,
+        sparcs,
         sparc_lens,
         max_sparc_len,
-        sparcs,
         accents,
     )
 
@@ -84,3 +87,31 @@ def log(logger, step, meta):
 
 def eval_log(logger, step, loss):
     logger.add_scalar("loss/eval_loss", loss, step)
+
+def plot_alignment_to_numpy(alignment, title="Alignment", xlabel="Text", ylabel="SPARC Frames"):
+    """
+    Converts an alignment matrix into a numpy image for TensorBoard.
+    
+    alignment: 2D numpy array or torch.Tensor (mel_len, text_len)
+    """
+    if isinstance(alignment, torch.Tensor):
+        alignment = alignment.detach().cpu().numpy()
+        
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(alignment, aspect='auto', origin='lower', interpolation='none')
+    fig.colorbar(im, ax=ax)
+    
+    ax.set_title(title)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    
+    # Save plot to a numpy array (for TensorBoard)
+    buf = io.BytesIO()
+    plt.tight_layout()
+    plt.savefig(buf, format='png')
+    buf.seek(0)
+    image = Image.open(buf)
+    image = np.array(image)
+    plt.close(fig)
+    
+    return image

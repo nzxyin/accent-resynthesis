@@ -50,7 +50,7 @@ class RelativeMultiHeadAttention(nn.Module):
             assert attention_mask.shape == (b, l), f"{(b,l)}, {attention_mask.shape}"
             attention_mask = attention_mask.unsqueeze(1)
             attention_mask = attention_mask.repeat(1, h, 1).unsqueeze(-1)
-            logits.masked_fill(attention_mask.to(torch.bool), -float('inf'))
+            logits.masked_fill(attention_mask.to(torch.bool), -1e8)
 
         probs = F.softmax(logits, dim=-1)
         probs = self.dropout(probs)

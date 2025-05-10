@@ -14,3 +14,5 @@ python train.py -p config/single_accent_config/preprocess_config.yaml -m config/
 ```
 ## Inference
 See `testing.ipynb`.
+
+python train.py -p config/2_accent_config/preprocess_config.yaml -m config/2_accent_config/model_config.yaml -t config/2_accent_config/train_config.yaml --save_name sepconv_aligner

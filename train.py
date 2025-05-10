@@ -27,6 +27,7 @@ def main(args, configs):
     dataset = MultiAccentDataset(
         "train.json", preprocess_config, train_config, sort=True, drop_last=True
     )
+    
     batch_size = train_config["optimizer"]["batch_size"]
     group_size = 8  # Set this larger than 1 to enable sorting in Dataset
     assert batch_size * group_size < len(dataset)
@@ -35,6 +36,7 @@ def main(args, configs):
         batch_size=batch_size * group_size,
         shuffle=True,
         collate_fn=dataset.collate_fn,
+        num_workers=8
     )
 
     # Prepare model
@@ -74,9 +76,8 @@ def main(args, configs):
             for batch in batchs:
                 batch = to_device(batch, device)
                 # Forward
-                assert len(batch) == 8
 
-                output = model(*(batch[1:7]))
+                output = model(*(batch[1:]))
 
                 # Cal Loss
                 loss, meta = Loss(output, batch[5])
